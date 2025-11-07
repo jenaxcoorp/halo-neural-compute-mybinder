@@ -1,33 +1,50 @@
 #!/bin/bash
 set -e
 
-echo "🎯 Halo Neural Compute - Post-Build Setup"
+echo "🎯 Halo Neural Compute - Post-Build Setup (Fixed)"
 
-# Create bin directory
-mkdir -p "$HOME/bin"
-export PATH="$HOME/bin:$PATH"
+# Create directories
+mkdir -p "$HOME/bin" "$HOME/.config/halo-neural-compute"
 
-# Download Ollama
-echo "📦 Installing Ollama..."
-wget -q https://github.com/ollama/ollama/releases/download/v0.3.14/ollama-linux-amd64 -O "$HOME/bin/ollama"
-chmod +x "$HOME/bin/ollama"
+# Only download small binaries during build
+echo "📦 Installing sshx (small binary - safe for build time)..."
+wget -q --timeout=60 https://github.com/ekzhang/sshx/releases/latest/download/sshx-x86_64-unknown-linux-gnu.tar.gz -O /tmp/sshx.tar.gz || true
+if [ -f /tmp/sshx.tar.gz ]; then
+    tar -xzf /tmp/sshx.tar.gz -C "$HOME/bin" 2>/dev/null || true
+    chmod +x "$HOME/bin/sshx" 2>/dev/null || true
+    echo "✅ sshx installed"
+else
+    echo "⚠️  sshx download skipped (will retry at runtime)"
+fi
 
-# Download sshx
-echo "📦 Installing sshx..."
-wget -q https://github.com/ekzhang/sshx/releases/latest/download/sshx-x86_64-unknown-linux-gnu.tar.gz -O /tmp/sshx.tar.gz
-mkdir -p /tmp/sshx
- tar -xzf /tmp/sshx.tar.gz -C /tmp/sshx
-cp /tmp/sshx/sshx "$HOME/bin/sshx" 2>/dev/null || true
-chmod +x "$HOME/bin/sshx" || true
+# Create runtime installer for Ollama (large binary - deferred to runtime)
+cat > "$HOME/bin/install-ollama.sh" << 'OLLAMA_SCRIPT'
+#!/bin/bash
+if [ ! -f "$HOME/bin/ollama" ]; then
+    echo "📦 Downloading Ollama (150MB - this takes 2-3 minutes)..."
+    wget --timeout=300 --tries=3 --progress=dot:giga \
+         https://github.com/ollama/ollama/releases/download/v0.3.14/ollama-linux-amd64 \
+         -O "$HOME/bin/ollama"
+    chmod +x "$HOME/bin/ollama"
+    echo "✅ Ollama installed successfully!"
+else
+    echo "✅ Ollama already installed"
+fi
+OLLAMA_SCRIPT
 
-# Clone Agent Zero
-echo "📦 Cloning Agent Zero..."
-git clone https://github.com/frdel/agent-zero.git "$HOME/agent-zero" || true
-cd "$HOME/agent-zero"
-pip install -r requirements.txt
+chmod +x "$HOME/bin/install-ollama.sh"
 
-# Create Agent Zero config
-cat > "$HOME/agent-zero/.env" << 'EOC'
+# Create Agent Zero setup script (heavy dependencies - deferred to runtime)
+cat > "$HOME/bin/setup-agent-zero.sh" << 'AGENT_SCRIPT'
+#!/bin/bash
+if [ ! -d "$HOME/agent-zero" ]; then
+    echo "📦 Setting up Agent Zero (cloning repo + pip install)..."
+    git clone --depth=1 https://github.com/frdel/agent-zero.git "$HOME/agent-zero"
+    cd "$HOME/agent-zero"
+    pip install --no-cache-dir -q -r requirements.txt
+    
+    # Create config
+    cat > .env << 'CONFIG'
 CHAT_MODEL_NAME=qwen2.5:7b
 UTIL_MODEL_NAME=qwen2.5:7b
 CODE_EXEC_MODEL_NAME=qwen2.5:7b
@@ -36,6 +53,102 @@ OLLAMA_BASE_URL=http://localhost:11434
 AGENT_MAX_MEMORY_SIZE=50000
 CONTEXT_WINDOW_SIZE=32768
 MAX_CONCURRENT_AGENTS=8
-EOC
+CONFIG
+    
+    echo "✅ Agent Zero configured!"
+else
+    echo "✅ Agent Zero already set up"
+fi
+AGENT_SCRIPT
 
-echo "✅ Post-Build Complete!"
+chmod +x "$HOME/bin/setup-agent-zero.sh"
+
+# Create unified setup script
+cat > "$HOME/bin/setup-halo-complete.sh" << 'COMPLETE_SCRIPT'
+#!/bin/bash
+echo "🚀 Halo Neural Compute - Complete Setup"
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+# Step 1: Ollama
+bash "$HOME/bin/install-ollama.sh"
+
+# Step 2: Agent Zero
+bash "$HOME/bin/setup-agent-zero.sh"
+
+# Step 3: Start Ollama server
+echo "🔄 Starting Ollama server..."
+"$HOME/bin/ollama" serve > "$HOME/ollama.log" 2>&1 &
+OLLAMA_PID=$!
+echo $OLLAMA_PID > "$HOME/.ollama.pid"
+sleep 3
+
+# Step 4: Pull model
+echo "📥 Pulling qwen2.5:7b model (this may take 10-15 minutes)..."
+"$HOME/bin/ollama" pull qwen2.5:7b
+
+# Step 5: Start Agent Zero
+echo "🤖 Starting Agent Zero on port 50080..."
+cd "$HOME/agent-zero"
+python run_ui.py > "$HOME/agent-zero.log" 2>&1 &
+AGENT_PID=$!
+echo $AGENT_PID > "$HOME/.agent-zero.pid"
+
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo "✅ Setup complete!"
+echo "📊 Agent Zero: http://localhost:50080"
+echo "📝 Logs: ~/ollama.log, ~/agent-zero.log"
+COMPLETE_SCRIPT
+
+chmod +x "$HOME/bin/setup-halo-complete.sh"
+
+# Create quick status checker
+cat > "$HOME/bin/halo-status.sh" << 'STATUS_SCRIPT'
+#!/bin/bash
+echo "🎯 Halo Neural Compute - Status"
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+if [ -f "$HOME/.halo-initialized" ]; then
+    echo "✅ System initialized"
+else
+    echo "⏳ System not yet initialized (run setup-halo-complete.sh)"
+fi
+
+if [ -f "$HOME/bin/ollama" ]; then
+    echo "✅ Ollama binary installed"
+else
+    echo "❌ Ollama not installed"
+fi
+
+if [ -d "$HOME/agent-zero" ]; then
+    echo "✅ Agent Zero installed"
+else
+    echo "❌ Agent Zero not installed"
+fi
+
+if [ -f "$HOME/.ollama.pid" ] && kill -0 $(cat "$HOME/.ollama.pid") 2>/dev/null; then
+    echo "✅ Ollama server running (PID: $(cat "$HOME/.ollama.pid"))"
+else
+    echo "⏸️  Ollama server not running"
+fi
+
+if [ -f "$HOME/.agent-zero.pid" ] && kill -0 $(cat "$HOME/.agent-zero.pid") 2>/dev/null; then
+    echo "✅ Agent Zero running (PID: $(cat "$HOME/.agent-zero.pid"))"
+else
+    echo "⏸️  Agent Zero not running"
+fi
+
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+STATUS_SCRIPT
+
+chmod +x "$HOME/bin/halo-status.sh"
+
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo "✅ Build phase complete! (Lightweight setup only)"
+echo ""
+echo "📝 Heavy downloads moved to runtime for reliability:"
+echo "   • Ollama (150MB) - install-ollama.sh"
+echo "   • Agent Zero + deps (~200MB) - setup-agent-zero.sh"
+echo ""
+echo "🚀 After launch, run: setup-halo-complete.sh"
+echo "📊 Check status anytime: halo-status.sh"
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"

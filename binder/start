@@ -1,52 +1,59 @@
 #!/bin/bash
-set -e
 
-echo "🚀 Halo Neural Compute - Starting Services..."
+echo "🚀 Halo Neural Compute - Container Starting..."
 
-# Export PATH
+# Add bin to PATH
 export PATH="$HOME/bin:$PATH"
 
-# Start Ollama server
-echo "Starting Ollama server..."
-"$HOME/bin/ollama" serve > "$HOME/ollama.log" 2>&1 &
-sleep 10
-
-# Download model in background
-echo "Downloading qwen2.5:7b model (background)..."
-"$HOME/bin/ollama" pull qwen2.5:7b > "$HOME/ollama-pull.log" 2>&1 &
-
-# Start sshx tunnel
-echo "Starting sshx terminal tunnel..."
-"$HOME/bin/sshx" > "$HOME/sshx_url.txt" 2>&1 &
-sleep 5
-
-# Extract sshx URL
-if [ -f "$HOME/sshx_url.txt" ]; then
-    SSHX_URL=$(grep -o 'https://sshx.io/[^ ]*' "$HOME/sshx_url.txt" | head -1)
-    if [ -n "$SSHX_URL" ]; then
-      echo "📍 sshx Terminal URL: $SSHX_URL" | tee "$HOME/sshx_url.txt"
+# Check if this is first launch
+if [ ! -f "$HOME/.halo-initialized" ]; then
+    echo ""
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo "🎉 Welcome to Halo Neural Compute on MyBinder!"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo ""
+    echo "📝 This is your first launch. Setup is required."
+    echo ""
+    echo "⚡ Quick Setup (Recommended):"
+    echo "   Open a terminal and run:"
+    echo "   → setup-halo-complete.sh"
+    echo ""
+    echo "📊 Manual Setup (Advanced):"
+    echo "   1. install-ollama.sh        # Download Ollama binary"
+    echo "   2. setup-agent-zero.sh      # Install Agent Zero"
+    echo "   3. Start services manually"
+    echo ""
+    echo "🔍 Check status anytime:"
+    echo "   → halo-status.sh"
+    echo ""
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo ""
+    
+    # Option: Auto-run setup in background (uncomment if desired)
+    # echo "🔄 Starting automatic setup in background..."
+    # (
+    #     bash "$HOME/bin/setup-halo-complete.sh" && \
+    #     touch "$HOME/.halo-initialized"
+    # ) > "$HOME/halo-setup.log" 2>&1 &
+    # echo "📝 Setup progress: tail -f ~/halo-setup.log"
+else
+    echo "✅ Halo system already initialized"
+    
+    # Auto-start services if they were running before
+    if [ -f "$HOME/bin/ollama" ] && [ ! -f "$HOME/.ollama.pid" ]; then
+        echo "🔄 Starting Ollama server..."
+        "$HOME/bin/ollama" serve > "$HOME/ollama.log" 2>&1 &
+        echo $! > "$HOME/.ollama.pid"
+    fi
+    
+    if [ -d "$HOME/agent-zero" ] && [ ! -f "$HOME/.agent-zero.pid" ]; then
+        echo "🤖 Starting Agent Zero..."
+        cd "$HOME/agent-zero"
+        python run_ui.py > "$HOME/agent-zero.log" 2>&1 &
+        echo $! > "$HOME/.agent-zero.pid"
     fi
 fi
 
-# Start Agent Zero (after model downloads)
-(
-  echo "Waiting for model download..."
-  wait
-  sleep 5
-  echo "Starting Agent Zero..."
-  cd "$HOME/agent-zero"
-  python3 run_ui.py --host 0.0.0.0 --port 50080 > "$HOME/agent-zero.log" 2>&1 &
-) &
-
-echo "✅ Services started!"
-printenv | sort > "$HOME/env_at_start.txt"
-
-echo ""
-echo "📋 Access Points:"
-echo "  - Agent Zero UI: /proxy/50080/"
-echo "  - Ollama API: /proxy/11434/"
-echo "  - sshx Terminal: cat ~/sshx_url.txt"
-echo ""
-
-# Start Jupyter
+# Start Jupyter (pass through all arguments)
+echo "📓 Starting Jupyter Notebook..."
 exec "$@"
