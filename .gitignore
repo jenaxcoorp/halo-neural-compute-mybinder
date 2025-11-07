@@ -1,0 +1,12 @@
+# Logs and caches
+*.log
+__pycache__/
+.env
+.DS_Store
+*.tar.gz
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Binder build caches
+binder/.local/

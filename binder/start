@@ -1,0 +1,52 @@
+#!/bin/bash
+set -e
+
+echo "🚀 Halo Neural Compute - Starting Services..."
+
+# Export PATH
+export PATH="$HOME/bin:$PATH"
+
+# Start Ollama server
+echo "Starting Ollama server..."
+"$HOME/bin/ollama" serve > "$HOME/ollama.log" 2>&1 &
+sleep 10
+
+# Download model in background
+echo "Downloading qwen2.5:7b model (background)..."
+"$HOME/bin/ollama" pull qwen2.5:7b > "$HOME/ollama-pull.log" 2>&1 &
+
+# Start sshx tunnel
+echo "Starting sshx terminal tunnel..."
+"$HOME/bin/sshx" > "$HOME/sshx_url.txt" 2>&1 &
+sleep 5
+
+# Extract sshx URL
+if [ -f "$HOME/sshx_url.txt" ]; then
+    SSHX_URL=$(grep -o 'https://sshx.io/[^ ]*' "$HOME/sshx_url.txt" | head -1)
+    if [ -n "$SSHX_URL" ]; then
+      echo "📍 sshx Terminal URL: $SSHX_URL" | tee "$HOME/sshx_url.txt"
+    fi
+fi
+
+# Start Agent Zero (after model downloads)
+(
+  echo "Waiting for model download..."
+  wait
+  sleep 5
+  echo "Starting Agent Zero..."
+  cd "$HOME/agent-zero"
+  python3 run_ui.py --host 0.0.0.0 --port 50080 > "$HOME/agent-zero.log" 2>&1 &
+) &
+
+echo "✅ Services started!"
+printenv | sort > "$HOME/env_at_start.txt"
+
+echo ""
+echo "📋 Access Points:"
+echo "  - Agent Zero UI: /proxy/50080/"
+echo "  - Ollama API: /proxy/11434/"
+echo "  - sshx Terminal: cat ~/sshx_url.txt"
+echo ""
+
+# Start Jupyter
+exec "$@"
