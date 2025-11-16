@@ -1,5 +1,0 @@
-wget
-curl
-git
-build-essential
-sqlite3

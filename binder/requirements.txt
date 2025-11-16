@@ -1,0 +1,4 @@
+jupyterlab
+jupyter-server-proxy
+fastapi
+uvicorn[standard]
