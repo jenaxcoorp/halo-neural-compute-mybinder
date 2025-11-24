@@ -1,0 +1,33 @@
+#!/usr/bin/env bash
+set -euo pipefail
+# Binder will execute this file on container start if present at repo root
+# Start FastAPI in background on 50080, then launch JupyterLab (server-proxy will forward /proxy/50080/)
+
+set -e
+
+start_fastapi() {
+python - <<'PY' &
+from uvicorn import run
+import sys
+sys.path.append('halo-neural-compute-mybinder')
+try:
+    from app_fastapi import app
+except Exception as e:
+    # fallback: inline tiny app
+    from fastapi import FastAPI
+    app = FastAPI()
+    @app.get('/')
+    def root():
+        return {'status':'ok','message':'Fallback FastAPI'}
+run(app, host='0.0.0.0', port=50080)
+PY
+}
+
+chmod +x start || true
+start_fastapi
+
+# Give the server a moment
+sleep 2 || true
+
+# Now start JupyterLab in foreground
+exec jupyter lab --NotebookApp.default_url=/lab --ServerApp.allow_origin='*' --ServerApp.disable_check_xsrf=True
