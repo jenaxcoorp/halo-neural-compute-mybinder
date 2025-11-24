@@ -1,1 +1,1 @@
-https://mybinder.org/v2/gh/jenaxcoorp/halo-neural-compute-mybinder/HEAD?urlpath=proxy/50080/
+https://mybinder.org/v2/gh/jenaxcoorp/halo-neural-compute-mybinder/vps-minimal-1.0?urlpath=proxy/50080/
