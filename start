@@ -1,0 +1,23 @@
+#!/usr/bin/env bash
+set -euo pipefail
+# Binder will execute this file on container start if present at repo root
+# Launch a simple FastAPI app on port 50080 to validate /proxy/50080/
+
+# Prefer module if available, fallback to inline
+if python -c "import halo_neural_compute_mybinder" 2>/dev/null; then
+  # If packaged as module (not typical here), point to module app
+  python - <<'PY'
+from uvicorn import run
+from halo_neural_compute_mybinder.app_fastapi import app
+run(app, host="0.0.0.0", port=50080)
+PY
+else
+  # Use filesystem path
+  python - <<'PY'
+from uvicorn import run
+import sys
+sys.path.append('halo-neural-compute-mybinder')
+from app_fastapi import app
+run(app, host="0.0.0.0", port=50080)
+PY
+fi
