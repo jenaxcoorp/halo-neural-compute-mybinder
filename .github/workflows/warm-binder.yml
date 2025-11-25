@@ -1,0 +1,14 @@
+name: Warm Binder Frontdoor
+on:
+  schedule:
+    - cron: '0 */8 * * *'  # every 8 hours
+  workflow_dispatch:
+jobs:
+  warm:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Hit Binder frontdoor (tag)
+        run: |
+          FRONT="https://mybinder.org/v2/gh/jenaxcoorp/halo-neural-compute-mybinder/vps-minimal-1.0?urlpath=proxy/50080/"
+          echo "Hitting $FRONT"
+          curl -sS -L -m 120 "$FRONT" -o /dev/null || true
